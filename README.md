@@ -1,6 +1,17 @@
 # Cloudflare IP Updater for AWS Security Groups
 
-This is a Python script designed to update AWS security group policies with Cloudflare IP addresses.
+The Cloudflare IP Updater for AWS Security Groups is a Python script developed to enhance the security of AWS resources by ensuring that only traffic originating from Cloudflare IP addresses is allowed to access specified ports (e.g., port 443). By updating AWS security group policies dynamically with the latest Cloudflare IP addresses, this script helps protect the origin server from exposure to unauthorized access.
+
+## How It Works
+
+The script retrieves the latest list of Cloudflare IP addresses using the Cloudflare API. It then updates the specified AWS security groups with the retrieved IP addresses, allowing inbound traffic only from these trusted sources.
+
+## Features
+
+- Automatic retrieval of Cloudflare IP addresses using the Cloudflare API.
+- Dynamic updating of AWS security group policies to allow traffic only from Cloudflare IP addresses.
+- Support for both IPv4 and IPv6 addresses.
+- Email notification feature to alert administrators of successful or failed updates.
 
 ## Description
 
@@ -34,12 +45,29 @@ The following IAM policies are used for managing security group rules:
     - `ec2:DescribeSecurityGroups`
 - **Resource:** All resources (`*`)
 
+### For sending emails via AWS SES
 
-3. Set up environment variables(you can navigate to Lambda Function > Configuration > Environment variables and set Key+Value there):
+- **Policy Name:** ses:SendEmail
+- **Permissions:**
+    - `ses:SendEmail`
+- **Resource:** All resources (`*`)
+
+3. Setting Up Environment Variables
+
+To configure the Cloudflare IP Updater script, follow these steps to set up environment variables:
+
+1. Navigate to your Lambda Function settings.
+2. Go to Configuration > Environment variables.
+3. Add the following Key+Value pairs:
 
    - `SECURITY_GROUP_IDS_LIST`: Comma-separated list of AWS Security Group IDs.
    - `PORTS_LIST`: Comma-separated list of TCP ports to open (default is `443`).
    - Optionally, set `UPDATE_IPV6` to `0` to disable IPv6 updates.
+   - `SES_REGION`: Set your AWS SES region. You can find supported regions [here](https://docs.aws.amazon.com/ses/latest/dg/regions.html).
+   - `SES_SENDER_EMAIL`: The email address you wish to send emails from.
+   - `SES_RECIPIENT_EMAIL`: The email address where notifications will be sent.
+
+Make sure to replace the placeholder values with your actual configuration details. These environment variables are essential for the proper functioning of the Cloudflare IP Updater script.
 
 4. Deploy the Lambda function to your AWS account.
 
