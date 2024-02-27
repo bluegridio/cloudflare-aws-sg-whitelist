@@ -2,8 +2,13 @@ import os
 import boto3
 import json
 import urllib3
+import boto3
 
+SES_REGION = 'your-ses-region'
+SES_SENDER_EMAIL = 'sender.email@example.com'
+SES_RECIPIENT_EMAIL = 'recipient.email@example.com'
 
+ses_client = boto3.client('ses', region_name=SES_REGION)
 def get_cloudflare_ip_list():
     http = urllib3.PoolManager()
     response = http.request('GET', 'https://api.cloudflare.com/client/v4/ips')
@@ -12,8 +17,8 @@ def get_cloudflare_ip_list():
         return temp['result']
     raise Exception("Cloudflare response error")
 
-def get_aws_security_group(group_id):
-    ec2 = boto3.resource('ec2')
+def get_aws_security_group(group_id, region):
+    ec2 = boto3.resource('ec2', region_name=region)
     group = ec2.SecurityGroup(group_id)
     if group.group_id == group_id:
         return group
@@ -95,56 +100,77 @@ def get_update_ipv6():
     except (KeyError, ValueError):
         return True
 
-def update_security_group_policies(ip_addresses):
-  print("Checking policies of Security Groups")
+def update_security_group_policies(ip_addresses, security_group_id, region):
+    print("Checking policies of Security Groups")
 
-  try:
-    security_groups = os.environ['SECURITY_GROUP_IDS_LIST']
-  except KeyError:
     try:
-      security_groups = os.environ['SECURITY_GROUP_ID']
+        security_groups = os.environ['SECURITY_GROUP_IDS_LIST']
     except KeyError:
-      print('Missing environment variables SECURITY_GROUP_IDS_LIST and SECURITY_GROUP_ID. Will not update security groups.')
-      return
+        try:
+            security_groups = os.environ['SECURITY_GROUP_ID']
+        except KeyError:
+            print('Missing environment variables SECURITY_GROUP_IDS_LIST and SECURITY_GROUP_ID. Will not update security groups.')
+            return
 
-  security_groups = map(get_aws_security_group, security_groups.split(','))
+    security_groups = list(map(lambda group_id: get_aws_security_group(group_id, region), security_groups.split(',')))
 
-  try:
-    ports = os.environ['PORTS_LIST']
-  except KeyError:
-    ports = '443'
+    try:
+        ports = os.environ['PORTS_LIST']
+    except KeyError:
+        ports = '443'
 
-  ports = map(int, ports.split(','))
+    ports = list(map(int, ports.split(',')))
 
-  if (not ports) or (not security_groups):
-    raise Exception('At least one TCP port and one security group ID are required.')
+    if (not ports) or (not security_groups):
+        raise Exception('At least one TCP port and one security group ID are required.')
 
-  for security_group in security_groups:
-    current_rules = security_group.ip_permissions
-    for port in ports:
-      for ipv4_cidr in ip_addresses['ipv4_cidrs']:
-        if not check_ipv4_rule_exists(current_rules, ipv4_cidr, port):
-          add_ipv4_rule(security_group, ipv4_cidr, port)
+    for security_group in security_groups:
+        current_rules = security_group.ip_permissions
+        for port in ports:
+            for ipv4_cidr in ip_addresses['ipv4_cidrs']:
+                if not check_ipv4_rule_exists(current_rules, ipv4_cidr, port):
+                    add_ipv4_rule(security_group, ipv4_cidr, port)
 
-      for rule in current_rules:
-        if rule['IpProtocol'] == 'tcp' and rule['FromPort'] == port and rule['ToPort'] == port:
-          for ip_range in rule['IpRanges']:
-            if ip_range['CidrIp'] not in ip_addresses['ipv4_cidrs']:
-              delete_ipv4_rule(security_group, ip_range['CidrIp'], port)
+            for rule in current_rules:
+                if rule['IpProtocol'] == 'tcp' and rule['FromPort'] == port and rule['ToPort'] == port:
+                    for ip_range in rule['IpRanges']:
+                        if ip_range['CidrIp'] not in ip_addresses['ipv4_cidrs']:
+                            delete_ipv4_rule(security_group, ip_range['CidrIp'], port)
 
-      if get_update_ipv6():
-        for ipv6_cidr in ip_addresses['ipv6_cidrs']:
-          if not check_ipv6_rule_exists(current_rules, ipv6_cidr, port):
-            add_ipv6_rule(security_group, ipv6_cidr, port)
+            if get_update_ipv6():
+                for ipv6_cidr in ip_addresses['ipv6_cidrs']:
+                    if not check_ipv6_rule_exists(current_rules, ipv6_cidr, port):
+                        add_ipv6_rule(security_group, ipv6_cidr, port)
 
-        for rule in current_rules:
-          if rule['IpProtocol'] == 'tcp' and rule['FromPort'] == port and rule['ToPort'] == port:
-            for ip_range in rule['Ipv6Ranges']:
-              if ip_range['CidrIpv6'] not in ip_addresses['ipv6_cidrs']:
-                delete_ipv6_rule(security_group, ip_range['CidrIpv6'], port)
+                for rule in current_rules:
+                    if rule['IpProtocol'] == 'tcp' and rule['FromPort'] == port and rule['ToPort'] == port:
+                        for ip_range in rule['Ipv6Ranges']:
+                            if ip_range['CidrIpv6'] not in ip_addresses['ipv6_cidrs']:
+                                delete_ipv6_rule(security_group, ip_range['CidrIpv6'], port)
 
+def send_alert_email(lambda_name, subject, body):
+    try:
+        response = ses_client.send_email(
+            Source=SES_SENDER_EMAIL,
+            Destination={
+                'ToAddresses': [SES_RECIPIENT_EMAIL],
+            },
+            Message={
+                'Subject': {'Data': f"{lambda_name} - {subject}"},
+                'Body': {'Text': {'Data': body}},
+            },
+        )
+        print("Email sent successfully.")
+    except Exception as e:
+        print("Error sending email:", str(e))
 
 def lambda_handler(event, context):
-    security_group_id = os.environ.get('SECURITY_GROUP_ID')
-    ip_addresses = get_cloudflare_ip_list()
-    update_security_group_policies(ip_addresses)
+    try:
+        lambda_name = context.function_name
+        security_group_id = os.environ.get('SECURITY_GROUP_ID')
+        security_group_region = os.environ.get('SECURITY_GROUP_REGION')
+        ip_addresses = get_cloudflare_ip_list()
+        update_security_group_policies(ip_addresses, security_group_id, security_group_region)
+        send_alert_email(lambda_name, "Lambda Execution Success", "Security group policies were updated successfully.")
+    except Exception as e:
+        send_alert_email(lambda_name, "Lambda Execution Error", f"An error occurred: {str(e)}. Unable to update security group policies.")
