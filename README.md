@@ -60,12 +60,13 @@ To configure the Cloudflare IP Updater script, follow these steps to set up envi
 2. Go to Configuration > Environment variables.
 3. Add the following Key+Value pairs:
 
-   - `SECURITY_GROUP_IDS_LIST`: Comma-separated list of AWS Security Group IDs.
+   - `SECURITY_GROUP_IDS_LIST` or `SECURITY_GROUP_ID`: Comma-separated list of AWS Security Group IDs.
    - `PORTS_LIST`: Comma-separated list of TCP ports to open (default is `443`).
    - Optionally, set `UPDATE_IPV6` to `0` to disable IPv6 updates.
    - `SES_REGION`: Set your AWS SES region. You can find supported regions [here](https://docs.aws.amazon.com/ses/latest/dg/regions.html).
    - `SES_SENDER_EMAIL`: The email address you wish to send emails from.
    - `SES_RECIPIENT_EMAIL`: The email address where notifications will be sent.
+   - `WHITELISTED_IPS`: Comma-separated list of IP addresses to whitelist.
 
 Make sure to replace the placeholder values with your actual configuration details. These environment variables are essential for the proper functioning of the Cloudflare IP Updater script.
 
