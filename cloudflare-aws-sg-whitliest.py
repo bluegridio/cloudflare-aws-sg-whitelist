@@ -2,7 +2,6 @@ import os
 import boto3
 import json
 import urllib3
-import boto3
 
 SES_REGION = 'your-ses-region'
 SES_SENDER_EMAIL = 'sender.email@example.com'
@@ -50,11 +49,17 @@ def add_ipv4_rule(group, address, port):
     print("Added %s : %i to %s (%s) " % (address, port, group.group_id, group.group_name))
 
 def delete_ipv4_rule(group, address, port):
-    group.revoke_ingress(IpProtocol="tcp",
-                          CidrIp=address,
-                          FromPort=port,
-                          ToPort=port)
-    print("Removed %s : %i from %s (%s) " % (address, port, group.group_id, group.group_name))
+    whitelisted_ips = os.environ.get('WHITELISTED_IPS', '').split(',')
+    for rule in group.ip_permissions:
+        for ip_range in rule.get('IpRanges', []):
+            if ip_range['CidrIp'] == address and address not in whitelisted_ips:
+                group.revoke_ingress(IpProtocol="tcp",
+                                      CidrIp=address,
+                                      FromPort=port,
+                                      ToPort=port)
+                print(f"Removed {address} : {port} from {group.group_id} ({group.group_name})")
+                return
+    print(f"Skipping deletion of rule {address} in Security Group {group.group_id} as it is whitelisted.")
 
 def check_ipv6_rule_exists(rules, address, port):
     for rule in rules:
@@ -82,18 +87,20 @@ def add_ipv6_rule(group, address, port):
     print("Added %s : %i to %s (%s) " % (address, port, group.group_id, group.group_name))
 
 def delete_ipv6_rule(group, address, port):
-    group.revoke_ingress(IpPermissions=[{
-        'IpProtocol': "tcp",
-        'FromPort': port,
-        'ToPort': port,
-        'Ipv6Ranges': [
-            {
-                'CidrIpv6': address
-            },
-        ]
-    }])
-    print("Removed %s : %i from %s (%s) " % (address, port, group.group_id, group.group_name))
-
+    whitelisted_ips = os.environ.get('WHITELISTED_IPS', '').split(',')
+    for rule in group.ip_permissions:
+        for ip_range in rule.get('Ipv6Ranges', []):
+            if ip_range['CidrIpv6'] == address and address not in whitelisted_ips:
+                group.revoke_ingress(IpPermissions=[{
+                    'IpProtocol': "tcp",
+                    'FromPort': port,
+                    'ToPort': port,
+                    'Ipv6Ranges': [{'CidrIpv6': address}],
+                }])
+                print(f"Removed {address} : {port} from {group.group_id} ({group.group_name})")
+                return
+    print(f"Skipping deletion of rule {address} in Security Group {group.group_id} as it is whitelisted.")
+    
 def get_update_ipv6():
     try:
         return bool(int(os.environ['UPDATE_IPV6']))
