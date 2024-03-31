@@ -3,9 +3,9 @@ import boto3
 import json
 import urllib3
 
-SES_REGION = 'your-ses-region'
-SES_SENDER_EMAIL = 'sender.email@example.com'
-SES_RECIPIENT_EMAIL = 'recipient.email@example.com'
+SES_REGION = os.environ.get('SES_REGION')
+SES_SENDER_EMAIL = os.environ.get('SES_SENDER_EMAIL')
+SES_RECIPIENT_EMAIL = os.environ.get('SES_RECIPIENT_EMAIL')
 
 ses_client = boto3.client('ses', region_name=SES_REGION)
 def get_cloudflare_ip_list():
