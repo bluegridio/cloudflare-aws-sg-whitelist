@@ -124,8 +124,9 @@ def update_security_group_policies(ip_addresses, security_group_id, region):
     try:
         ports = os.environ['PORTS_LIST']
     except KeyError:
-        ports = '443'
-
+        print('PORTS_LIST environment variable not set. Cannot proceed.')
+        return
+    
     ports = list(map(int, ports.split(',')))
 
     if (not ports) or (not security_groups):
